@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: spring-boot-fault-tolerance
+
+  retry:
+    enabled: true
+    retry:
+      max-attempts: 5
+      backoff:
+        delay: 2000
+        multiplier: 2.0
+        max-delay: 10000
+
+
+logging:
+  level:
+    root: INFO
+    org.springframework.retry: DEBUG
