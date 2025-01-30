@@ -80,14 +80,14 @@ public class BasicRetryService {
 
 
 
-    // ---------------- Call Specific Recover Method:"recoverExample"--------------------------
+    // ---------------- Call Specific Recover Method:"recoverFromArithmeticException"--------------------------
 
     // Retry configuration: Retry on ArithmeticException, max 4 attempts, 1-second delay
     @Retryable(
             retryFor = {ArithmeticException.class}, // Retry on ArithmeticException
             maxAttempts = 4,                 // Max retry attempts
             backoff = @Backoff(delay = 1000), // 1-second delay between retries
-            recover = "recoverExample"
+            recover = "recoverFromArithmeticException"
     )
     public String basicRetryWithSpecificRecover(int id, String argument) {
         System.out.println("Id:{} "+id+" Argument:{}"+argument);
@@ -98,8 +98,51 @@ public class BasicRetryService {
 
     // Recover with Explicit Exception
     @Recover
-    public String recoverExample(ArithmeticException e,int id,String argument) {
+    public String recoverFromArithmeticException(ArithmeticException e,int id,String argument) {
         System.out.println("All retries failed. Fallback method called.");
         return "Recover Using User Defined Method"+"id:"+id+" Argument:"+argument;
     }
+
+    // ---------------- Basic Retry But Not Recoverable: --------------------------
+
+
+    // Though the Exception is same, it will retry 4 times, but will not try to find recover method.
+    // Retry configuration: Retry on ArithmeticException, max 4 attempts, 1-second delay
+    @Retryable(
+            retryFor = {ArithmeticException.class}, // Retry on ArithmeticException
+            maxAttempts = 4,                 // Max retry attempts
+            backoff = @Backoff(delay = 1000), // 1-second delay between retries
+            //recover = "recoverFromArithmeticException"
+            notRecoverable = {ArithmeticException.class} //It will not try to recover.
+    )
+    public Object basicRetryButNotRecoverable(int id, String argument) {
+        System.out.println("Id:{} "+id+" Argument:{}"+argument);
+        log.info("[BasicRetryService:basicRetryButNotRecoverable] Retry Number:{} ",Objects.requireNonNull(RetrySynchronizationManager.getContext()).getRetryCount());
+        throw new ArithmeticException("Divide by zero!"); // Simulate failure
+
+    }
+
+
+    // ---------------- No Retry But Recoverable:--------------------------
+
+
+    @Retryable(
+            recover = "recoverFromException", // Recovery method
+            noRetryFor = {ArithmeticException.class}, // Do not retry on ArithmeticException
+            maxAttempts = 3,                          // Max retry attempts
+            backoff = @Backoff(delay = 1000)          // 1-second delay between retries
+    )
+    public String noRetryButRecoverable(int id, String argument) {
+        log.info("Performing operation for id: {} and argument: {}", id, argument);
+        throw new ArithmeticException("Divide by zero!"); // Simulate failure
+    }
+
+    // Recovery method
+    @Recover
+    public String recoverFromException(ArithmeticException e, int id, String argument) {
+        log.info("Recovery method called for id: {} and argument: {}", id, argument);
+        System.out.println("Recovering from Arthmetic Excepiton , with No Retry");
+        return "Recovered from ArithmeticException: " + e.getMessage();
+    }
+
 }

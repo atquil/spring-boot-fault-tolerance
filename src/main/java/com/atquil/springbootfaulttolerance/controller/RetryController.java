@@ -46,6 +46,20 @@ public class RetryController {
         return ResponseEntity.ok(basicRetryService.basicRetryWithSpecificRecover(id,argument));
     }
 
+    @GetMapping("/basic-retry-but-notRecoverable")
+    public ResponseEntity<?> basicRetryButNotRecoverable() {
+        String argument = "ABC";
+        int id = 123;
+        return ResponseEntity.ok(basicRetryService.basicRetryButNotRecoverable(id,argument));
+    }
+
+    @GetMapping("/noretry-but-recoverable")
+    public ResponseEntity<?> noRetryButRecoverable() {
+        String argument = "ABC";
+        int id = 123;
+        return ResponseEntity.ok(basicRetryService.noRetryButRecoverable(id,argument));
+    }
+
 
     private final ImperativeStyleRetryServiceUsingRestTemplate retryUsingRestTemplate;
     @GetMapping("/retry-using-rest-template")

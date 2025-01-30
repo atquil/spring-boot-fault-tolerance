@@ -164,7 +164,7 @@ java.lang.RuntimeException: API call failed!
 
 ```
 
-### 4. Spring Retry with Recovery
+## 4. Spring Recovery
 
 >When all teh retry attempts result in failure, then we can use recover method to return proper response.
 >- Recover must have same **return type as the `@EnableRetry`.**
@@ -293,14 +293,14 @@ All retries failed. Fallback method called.
 
 Inside Service: 
 ```java
-    // ---------------- Call Specific Recover Method:"recoverExample"--------------------------
+    // ---------------- Call Specific Recover Method:"recoverFromArithmeticException"--------------------------
 
     // Retry configuration: Retry on ArithmeticException, max 4 attempts, 1-second delay
     @Retryable(
             retryFor = {ArithmeticException.class}, // Retry on ArithmeticException
             maxAttempts = 4,                 // Max retry attempts
             backoff = @Backoff(delay = 1000), // 1-second delay between retries
-            recover = "recoverExample"
+            recover = "recoverFromArithmeticException"
     )
     public String basicRetryWithSpecificRecover(int id, String argument) {
         System.out.println("Id:{} "+id+" Argument:{}"+argument);
@@ -311,7 +311,7 @@ Inside Service:
 
     // Recover with Explicit Exception
     @Recover
-    public String recoverExample(ArithmeticException e,int id,String argument) {
+    public String recoverFromArithmeticException(ArithmeticException e,int id,String argument) {
         System.out.println("All retries failed. Fallback method called.");
         return "Recover Using User Defined Method"+"id:"+id+" Argument:"+argument;
     }
@@ -328,8 +328,136 @@ Inside Controller:
 
 ```
 
+## 5. Skip Exception Handling Using
 
-### 5. Imperative (RetryTemplate) vs Declarative (@Retryable)
+> Using :
+> - `noRetryFor`: Excepiton which you don't want retry to happen, but if if Recovery is provided then it will happen
+> - `notRecoverable`: Exception for which you don't even want recovery to happen, it will result in throwing of Exception, after retry. 
+
+> We can use any of the combination between retry|noRetryFor and recover|notRecoverable
+
+### 5.1 : **notRecoverable** 
+
+Service: 
+```java
+  // ---------------- Basic Retry But Not Recoverable: --------------------------
+
+
+    // Though the Exception is same, it will retry 4 times, but will not try to find recover method.
+    // Retry configuration: Retry on ArithmeticException, max 4 attempts, 1-second delay
+    @Retryable(
+            retryFor = {ArithmeticException.class}, // Retry on ArithmeticException
+            maxAttempts = 4,                 // Max retry attempts
+            backoff = @Backoff(delay = 1000), // 1-second delay between retries
+            //recover = "recoverExample"
+            notRecoverable = {ArithmeticException.class} //It will not try to recover.
+    )
+    public Object basicRetryButNotRecoverable(int id, String argument) {
+        System.out.println("Id:{} "+id+" Argument:{}"+argument);
+        log.info("[BasicRetryService:basicRetryButNotRecoverable] Retry Number:{} ",Objects.requireNonNull(RetrySynchronizationManager.getContext()).getRetryCount());
+        throw new ArithmeticException("Divide by zero!"); // Simulate failure
+
+    }
+
+```
+
+Controller: 
+
+```java
+   @GetMapping("/basic-retry-but-notRecoverable")
+    public ResponseEntity<?> basicRetryButNotRecoverable() {
+        String argument = "ABC";
+        int id = 123;
+        return ResponseEntity.ok(basicRetryService.basicRetryButNotRecoverable(id,argument));
+    }
+```
+Output: **GET** http://localhost:8081/basic-retry-but-notRecoverable
+```java
+2025-01-30T16:20:43.332+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2025-01-30T16:20:43.335+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2025-01-30T16:20:43.337+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 2 ms
+2025-01-30T16:20:43.372+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=0; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
+Id:{} 123 Argument:{}ABC
+2025-01-30T16:20:43.373+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryButNotRecoverable] Retry Number:0 
+2025-01-30T16:20:44.379+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
+2025-01-30T16:20:44.379+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
+Id:{} 123 Argument:{}ABC
+2025-01-30T16:20:44.379+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryButNotRecoverable] Retry Number:1 
+2025-01-30T16:20:45.384+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=2; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
+2025-01-30T16:20:45.385+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=2; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
+Id:{} 123 Argument:{}ABC
+2025-01-30T16:20:45.385+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryButNotRecoverable] Retry Number:2 
+2025-01-30T16:20:46.387+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=3; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
+2025-01-30T16:20:46.388+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=3; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
+Id:{} 123 Argument:{}ABC
+2025-01-30T16:20:46.388+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryButNotRecoverable] Retry Number:3 
+2025-01-30T16:20:46.388+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=4; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
+2025-01-30T16:20:46.388+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry failed last attempt: count=4; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
+2025-01-30T16:20:46.388+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry exhausted and recovery disabled for this throwable
+2025-01-30T16:20:46.398+05:30 ERROR 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception [Request processing failed: java.lang.ArithmeticException: Divide by zero!] with root cause
+
+java.lang.ArithmeticException: Divide by zero!
+	at com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable(BasicRetryService.java:121) ~[main/:na]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+```
+
+### 5.2 noRetryFor
+
+
+Service: 
+
+```java
+
+    // ---------------- No Retry But Recoverable:--------------------------
+    
+    
+    @Retryable(
+            recover = "recoverFromException", // Recovery method
+            noRetryFor = {ArithmeticException.class}, // Do not retry on ArithmeticException
+            maxAttempts = 3,                          // Max retry attempts
+            backoff = @Backoff(delay = 1000)          // 1-second delay between retries
+    )
+    public String noRetryButRecoverable(int id, String argument) {
+        log.info("Performing operation for id: {} and argument: {}", id, argument);
+        throw new ArithmeticException("Divide by zero!"); // Simulate failure
+    }
+    
+    // Recovery method
+    @Recover
+    public String recoverFromException(ArithmeticException e, int id, String argument) {
+        log.info("Recovery method called for id: {} and argument: {}", id, argument);
+        System.out.println("Recovering from ArithmeticException , with No Retry");
+        return "Recovered from ArithmeticException: " + e.getMessage();
+        
+    }
+```
+Controller: 
+
+```java
+    @GetMapping("/noretry-but-recoverable")
+    public ResponseEntity<?> noRetryButRecoverable() {
+        String argument = "ABC";
+        int id = 123;
+        return ResponseEntity.ok(basicRetryService.noRetryButRecoverable(id,argument));
+    }
+```
+
+Output: **GET** http://localhost:8081/noretry-but-recoverable
+
+```java
+2025-01-30T16:43:52.932+05:30  INFO 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2025-01-30T16:43:52.932+05:30  INFO 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2025-01-30T16:43:52.933+05:30  INFO 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+2025-01-30T16:43:52.950+05:30 DEBUG 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=0; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.noRetryButRecoverable'
+2025-01-30T16:43:52.950+05:30  INFO 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : Performing operation for id: 123 and argument: ABC
+2025-01-30T16:43:52.951+05:30 DEBUG 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.noRetryButRecoverable'
+2025-01-30T16:43:52.951+05:30 DEBUG 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry failed last attempt: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.noRetryButRecoverable'
+2025-01-30T16:43:52.951+05:30  INFO 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : Recovery method called for id: 123 and argument: ABC
+Recovering from ArithmeticException , with No Retry
+
+```
+## 5. Imperative (RetryTemplate) vs Declarative (@Retryable)
 
 > Imperative Retry with `RetryTemplate`
 > 
