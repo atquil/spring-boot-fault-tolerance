@@ -20,28 +20,29 @@ import java.util.Collections;
 @Slf4j
 public class RetryConfig {
 
-    @Bean
-    public RetryTemplate retryTemplate() {
-        RetryTemplate retryTemplate = new RetryTemplate();
-        // SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy(); If for global level retry.
-
-        // Retry
-        SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy(
-                5, // Max Attempt is 5
-                Collections.singletonMap(ArithmeticException.class,true)
-        );
-
-        // Strategy for Retry
-        ExponentialBackOffPolicy backOffPolicy = new ExponentialBackOffPolicy();
-        backOffPolicy.setInitialInterval(2000);
-        backOffPolicy.setMultiplier(2);
-        backOffPolicy.setMaxInterval(5000);
-
-        //For for retryTemplate set both of them
-        retryTemplate.setRetryPolicy(retryPolicy);
-        retryTemplate.setBackOffPolicy(backOffPolicy);
-
-        return retryTemplate;
-
-    }
+//    @Bean
+//    public RetryTemplate retryTemplate() {
+//
+//
+//        RetryTemplate retryTemplate = new RetryTemplate();
+//        // SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy(); If for global level retry.
+//
+//        // Retry
+//        SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy(
+//                5, // 3 is the default value
+//                Collections.singletonMap(ArithmeticException.class,true)
+//        );
+//        // Strategy for Retry
+//        ExponentialBackOffPolicy backOffPolicy = new ExponentialBackOffPolicy();
+//        backOffPolicy.setInitialInterval(1000);
+//        //backOffPolicy.setMultiplier(2);
+//        backOffPolicy.setMaxInterval(7000);
+//
+//        //For for retryTemplate set both of them
+//        retryTemplate.setRetryPolicy(retryPolicy);
+//        retryTemplate.setBackOffPolicy(backOffPolicy);
+//
+//        return retryTemplate;
+//
+//    }
 }
