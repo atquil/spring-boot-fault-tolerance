@@ -98,544 +98,321 @@ logging:
     org.springframework.retry: DEBUG
 ```
 
-## 3. Basic Spring Retry: 
+## 3. Declarative (@Retryable) Style for Retry
 
->By default, @Retryable will attempt 3 times (1 first attempt + 2 retries) for all exceptions are thrown 
+### Declarative Retry
+>By default, **@Retryable will attempt 3 times** (1 first attempt + 2 retries) for all exceptions are thrown and fallback to the @Recover method that has the same return type in the same class..
+>- @Retryable: Indicates that this method is the candidate for retry.
+    - **backoff** policy: Configure the strategy for the number of retries, delay between two retries etc.
+    - **maxAttempts** : Default retry count is 3, and the first invocation of this method is always the first retry attempt
 
--  3.1: Create the Service -  `BasicRetryService.java`
+Create a class : `DeclarativeRetryService` and `DeclarativeRetryController` for this explanation. 
 
-   ```java
-    @Slf4j
-    @Service
-    public class BasicRetryService {
-    
-        // ----------------   Basic Retry  --------------------------
-    
-         // Retry configuration: Retry on RuntimeException, max 3 attempts, 1-second delay
-        @Retryable(
-                retryFor = {RuntimeException.class}, // Retry on RuntimeException
-                maxAttempts = 3,                 // Max retry attempts
-                backoff = @Backoff(delay = 1000) // 1-second delay between retries
-        )
-        public String basicRetry() {
-            log.info("[BasicRetryService:basicRetry] Retry Number:{} ",Objects.requireNonNull(RetrySynchronizationManager.getContext()).getRetryCount());
-            throw new RuntimeException("API call failed!"); // Simulate failure
-        }
-    }
-   ```
+#### 1. Basic Retry
+  - Description: Demonstrates a basic retry mechanism with 3 attempts and a 1-second delay between retries.
 
-- 3.2 Create a `controller` package and add `RetryController.java` file 
 
+- Service: 
 ```java
-@RestController
-@RequiredArgsConstructor
-public class RetryController {
-
-
-    private final BasicRetryService basicRetryService;
-
-    @GetMapping("/basic-retry")
-    public ResponseEntity<?> basicRetry() {
-        return ResponseEntity.ok(basicRetryService.basicRetry());
-    }
-}
-```
-
-- 3.3 Now Call teh API : **GET** http://localhost:8081/basic-retry
-
-**Output**
-```java
-2025-01-30T12:44:15.944+05:30  INFO 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
-2025-01-30T12:44:15.944+05:30  INFO 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
-2025-01-30T12:44:15.945+05:30  INFO 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
-2025-01-30T12:44:15.971+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=0; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetry'
-2025-01-30T12:44:15.972+05:30  INFO 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetry] Retry Number:0
-2025-01-30T12:44:16.977+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetry'
-2025-01-30T12:44:16.978+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetry'
-2025-01-30T12:44:16.978+05:30  INFO 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetry] Retry Number:1
-2025-01-30T12:44:17.983+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=2; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetry'
-2025-01-30T12:44:17.984+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=2; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetry'
-2025-01-30T12:44:17.984+05:30  INFO 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetry] Retry Number:2
-2025-01-30T12:44:17.984+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=3; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetry'
-2025-01-30T12:44:17.985+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry failed last attempt: count=3; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetry'
-2025-01-30T12:44:17.995+05:30 ERROR 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception [Request processing failed: org.springframework.retry.ExhaustedRetryException: Cannot locate recovery method] with root cause
-
-java.lang.RuntimeException: API call failed!
-
-```
-
-## 4. Spring Recovery
-
->When all teh retry attempts result in failure, then we can use recover method to return proper response.
->- Recover must have same **return type as the `@EnableRetry`.**
-
-- 4.1 Let's add a method **basicRetryWithRecover**
-```java
-
-@Slf4j
-@Service
-public class BasicRetryService {
-
-    // Retry configuration: Retry on ArithmeticException, max 3 attempts, 1-second delay
+// ----------------- BASIC RETRY --------------------------
+    /**
+     * Demonstrates basic retry mechanism with 3 attempts and 1-second delay
+     * @return Never returns successfully (always throws exception)
+     */
     @Retryable(
-            retryFor = {ArithmeticException.class}, // Retry on ArithmeticException
-            maxAttempts = 3,                 // Max retry attempts
-            backoff = @Backoff(delay = 1000) // 1-second delay between retries
+            retryFor = RuntimeException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000)
     )
-    public String basicRetryWithRecover() {
-        log.info("[BasicRetryService:basicRetryWithRecover] Retry Number:{} ",Objects.requireNonNull(RetrySynchronizationManager.getContext()).getRetryCount());
-        throw new ArithmeticException("Divide by zero!"); // Simulate failure
+    public String basicRetry() {
+        log.info("[BasicRetry] Attempt {}",
+                RetrySynchronizationManager.getContext().getRetryCount() + 1);
+        throw new RuntimeException("Simulated API failure!");
     }
+```
 
+- Controller: 
+```java
+@GetMapping("/basic-retry")
+public ResponseEntity<String> basicRetry() {
+    return ResponseEntity.ok(declarativeRetryService.basicRetry());
+}
+```
+- Test: http://localhost:8081/basic-retry
 
-    // Fallback method: Called when all retries fail
-    @Recover
-    public String recover(ArithmeticException e) {
-        System.out.println("All retries failed. Fallback method called.");
-        return "Fallback response";
-    }
+```java
+
+```
+
+#### 2. Retry with Recovery
+
+>When all the retry attempts result in failure, then we can use `@Recover` method to return proper response.
+>- Recover must have same **return type as the `@EnableRetry`.**
+>
+
+- Description: Demonstrates retry with a recovery mechanism. After 3 failed attempts, the recovery method is called.
+
+- Service:
+```java
+/// ----------------- RETRY WITH RECOVERY ------------------
+/**
+ * Demonstrates retry with recovery mechanism
+ * @return Fallback response after 3 failed attempts
+ */
+@Retryable(
+        retryFor = ArithmeticException.class,
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 1000)
+)
+public String basicRetryWithRecover() {
+    log.info("[RetryWithRecovery] Attempt {}",
+            RetrySynchronizationManager.getContext().getRetryCount() + 1);
+    throw new ArithmeticException("Division error!");
+}
+
+@Recover
+public String recover(ArithmeticException e) {
+    log.warn("[Recovery] All attempts failed. Returning fallback");
+    return "Safe fallback result";
 }
 
 ```
 
-- 4.2 Create a endpoint to call the API 
-
+- Controller:
 ```java
-    @GetMapping("/basic-retry-with-recovery")
-    public ResponseEntity<?> basicRetryWithRecoveryService() {
-        return ResponseEntity.ok(basicRetryService.basicRetryWithRecover());
-    }
-
+@GetMapping("/retry-with-recovery")
+public ResponseEntity<String> retryWithRecovery() {
+    return ResponseEntity.ok(declarativeRetryService.basicRetryWithRecover());
+}
 ```
+- Test: 
+  - http://localhost:8081/retry-with-recovery
+  - Behavior: Retries 3 times, then calls the recovery method.
 
-- 4.3 Call the Endpoint : **GET** http://localhost:8081/basic-retry-with-recovery
-
-**Output** 
-```java
-
-2025-01-30T12:44:48.892+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-2] o.s.retry.support.RetryTemplate          : Retry: count=0; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecover'
-2025-01-30T12:44:48.893+05:30  INFO 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-2] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryWithRecover] Retry Number:0
-2025-01-30T12:44:49.899+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-2] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecover'
-2025-01-30T12:44:49.899+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-2] o.s.retry.support.RetryTemplate          : Retry: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecover'
-2025-01-30T12:44:49.903+05:30  INFO 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-2] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryWithRecover] Retry Number:1
-2025-01-30T12:44:50.909+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-2] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=2; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecover'
-2025-01-30T12:44:50.909+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-2] o.s.retry.support.RetryTemplate          : Retry: count=2; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecover'
-2025-01-30T12:44:50.909+05:30  INFO 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-2] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryWithRecover] Retry Number:2
-2025-01-30T12:44:50.909+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-2] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=3; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecover'
-2025-01-30T12:44:50.909+05:30 DEBUG 19507 --- [spring-boot-fault-tolerance] [nio-8081-exec-2] o.s.retry.support.RetryTemplate          : Retry failed last attempt: count=3; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecover'
-All retries failed. Fallback method called.
-```
-
-> We can also include **method arguments** for @Recover methods, but 
+#### 3. Retry with Parameters and Recovery
+> We can also include **method arguments** for @Recover methods, but
 > - the **order must follow its @Retryable method**
 > - return type must be same for both @Retryable and @Recover
 
-Inside Service: 
+- Description: Demonstrates retry with method parameters passed to the recovery method
 
+- Service:
 ```java
-  // Retry configuration: Retry on ArithmeticException, max 4 attempts, 1-second delay
-    @Retryable(
-            retryFor = {ArithmeticException.class}, // Retry on ArithmeticException
-            maxAttempts = 4,                 // Max retry attempts
-            backoff = @Backoff(delay = 1000) // 1-second delay between retries
-    )
-    public String basicRetryWithRecoveryUsingArguments(int id, String argument) {
-        System.out.println("Id:{} "+id+" Argument:{}"+argument);
-        log.info("[BasicRetryService:basicRetryWithRecoveryUsingArguments] Retry Number:{} ",Objects.requireNonNull(RetrySynchronizationManager.getContext()).getRetryCount());
-        throw new ArithmeticException("Divide by zero!"); // Simulate failure
+// ------------ RETRY WITH PARAMETERS & RECOVERY -----------
+/**
+ * Demonstrates retry with method parameters passed to recovery
+ * @param id Transaction ID
+ * @param argument Business context parameter
+ * @return Fallback response with input parameters
+ */
+@Retryable(
+        retryFor = ArithmeticException.class,
+        maxAttempts = 4,
+        backoff = @Backoff(delay = 1000)
+)
+public String parameterizedRetry(int id, String argument) {
+    log.info("[ParamRetry] ID: {}, Arg: {}, Attempt: {}",
+            id, argument,
+            RetrySynchronizationManager.getContext().getRetryCount() + 1);
+    throw new ArithmeticException("Parametrized failure!");
+}
 
-    }
+@Recover
+public String parameterizedRecover(ArithmeticException e, int id, String argument) {
+    log.warn("[ParamRecovery] Failed for ID: {}, Arg: {}", id, argument);
+    return String.format("Fallback for ID: %d, Arg: %s", id, argument);
+}
 
-    // Recover with Explicit Exception
-    @Recover
-    public String recoverForBasicRetryWithRecoveryUsingArguments(ArithmeticException e,int id,String argument) {
-        System.out.println("All retries failed. Fallback method called.");
-        return "Fallback response"+"id:"+id+" Argument:"+argument;
-    }
 ```
 
-Inside Controller: 
-
+- Controller:
 ```java
-@GetMapping("/basic-retry-with-recovery-using-arguments")
-    public ResponseEntity<?> basicRetryWithRecoveryUsingArguments() {
-        String argument = "ABC";
-        int id = 123;
-        return ResponseEntity.ok(basicRetryService.basicRetryWithRecoveryUsingArguments(id,argument));
-    }
+@GetMapping("/retry-with-params")
+public ResponseEntity<String> retryWithParams(
+        @RequestParam(defaultValue = "123") int id,
+        @RequestParam(defaultValue = "test") String argument) {
+    return ResponseEntity.ok(declarativeRetryService.basicRetryWithRecoveryUsingArguments(id, argument));
+}
 ```
-- Output: 
-```properties
-2025-01-30T12:56:46.466+05:30  INFO 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
-2025-01-30T12:56:46.466+05:30  INFO 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
-2025-01-30T12:56:46.467+05:30  INFO 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
-2025-01-30T12:56:46.490+05:30 DEBUG 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=0; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecoveryUsingArguments'
-Id:{} 123 Argument:{}ABC
-2025-01-30T12:56:46.491+05:30  INFO 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryWithRecoveryUsingArguments] Retry Number:0 
-2025-01-30T12:56:47.498+05:30 DEBUG 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecoveryUsingArguments'
-2025-01-30T12:56:47.498+05:30 DEBUG 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecoveryUsingArguments'
-Id:{} 123 Argument:{}ABC
-2025-01-30T12:56:47.499+05:30  INFO 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryWithRecoveryUsingArguments] Retry Number:1 
-2025-01-30T12:56:48.504+05:30 DEBUG 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=2; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecoveryUsingArguments'
-2025-01-30T12:56:48.505+05:30 DEBUG 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=2; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecoveryUsingArguments'
-Id:{} 123 Argument:{}ABC
-2025-01-30T12:56:48.506+05:30  INFO 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryWithRecoveryUsingArguments] Retry Number:2 
-2025-01-30T12:56:49.507+05:30 DEBUG 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=3; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecoveryUsingArguments'
-2025-01-30T12:56:49.508+05:30 DEBUG 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=3; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecoveryUsingArguments'
-Id:{} 123 Argument:{}ABC
-2025-01-30T12:56:49.508+05:30  INFO 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryWithRecoveryUsingArguments] Retry Number:3 
-2025-01-30T12:56:49.508+05:30 DEBUG 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=4; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecoveryUsingArguments'
-2025-01-30T12:56:49.509+05:30 DEBUG 19571 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry failed last attempt: count=4; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryWithRecoveryUsingArguments'
-All retries failed. Fallback method called.
-```
+- Test: 
+  - http://localhost:8081/retry-with-params?id=123&argument=test
+  - Behavior: Retries 4 times, then calls the recovery method with the provided parameters.
+
+#### 4. Targeted Recovery Method
 
 > Explicitly declare a @Recover method for a @Retryable method i.e. which recover method should trigger
 
-Inside Service: 
+- Description: Demonstrates retry with a specific recovery method mapped using the recover attribute.
+- Service:
 ```java
-    // ---------------- Call Specific Recover Method:"recoverFromArithmeticException"--------------------------
+// ------------ TARGETED RECOVERY METHOD -------------------
+/**
+ * Demonstrates explicit recovery method mapping
+ * @param id Transaction ID
+ * @param argument Business context parameter
+ * @return Specialized fallback response
+ */
+@Retryable(
+        retryFor = ArithmeticException.class,
+        maxAttempts = 4,
+        backoff = @Backoff(delay = 1000),
+        recover = "targetedRecovery"
+)
+public String directedRecoveryRetry(int id, String argument) {
+    log.info("[DirectedRetry] Attempt {}",
+            RetrySynchronizationManager.getContext().getRetryCount() + 1);
+    throw new ArithmeticException("Directed failure!");
+}
 
-    // Retry configuration: Retry on ArithmeticException, max 4 attempts, 1-second delay
-    @Retryable(
-            retryFor = {ArithmeticException.class}, // Retry on ArithmeticException
-            maxAttempts = 4,                 // Max retry attempts
-            backoff = @Backoff(delay = 1000), // 1-second delay between retries
-            recover = "recoverFromArithmeticException"
-    )
-    public String basicRetryWithSpecificRecover(int id, String argument) {
-        System.out.println("Id:{} "+id+" Argument:{}"+argument);
-        log.info("[BasicRetryService:basicRetryWithSpecificRecover] Retry Number:{} ",Objects.requireNonNull(RetrySynchronizationManager.getContext()).getRetryCount());
-        throw new ArithmeticException("Divide by zero!"); // Simulate failure
-
-    }
-
-    // Recover with Explicit Exception
-    @Recover
-    public String recoverFromArithmeticException(ArithmeticException e,int id,String argument) {
-        System.out.println("All retries failed. Fallback method called.");
-        return "Recover Using User Defined Method"+"id:"+id+" Argument:"+argument;
-    }
-```
-Inside Controller: 
-```java
-
-    @GetMapping("/basic-retry-with-specific-recover")
-    public ResponseEntity<?> basicRetryWithSpecificRecover() {
-        String argument = "ABC";
-        int id = 123;
-        return ResponseEntity.ok(basicRetryService.basicRetryWithSpecificRecover(id,argument));
-    }
-
+@Recover
+public String targetedRecovery(ArithmeticException e, int id, String argument) {
+    log.warn("[TargetedRecovery] Special handling for ID: {}", id);
+    return String.format("Special recovery for ID: %d", id);
+}
 ```
 
-## 5. Skip Exception Handling Using
+- Controller:
+```java
+@GetMapping("/targeted-recovery")
+public ResponseEntity<String> targetedRecovery(
+        @RequestParam(defaultValue = "456") int id,
+        @RequestParam(defaultValue = "target") String argument) {
+    return ResponseEntity.ok(declarativeRetryService.basicRetryWithSpecificRecover(id, argument));
+}
+```
+- Test: 
+  - http://localhost:8081/targeted-recovery?id=456&argument=target
+  - Behavior: Retries 4 times, then calls the specific recovery method
+
+#### 5. Skip Exception Handling: 
 
 > Using :
 > - `noRetryFor`: Excepiton which you don't want retry to happen, but if if Recovery is provided then it will happen
-> - `notRecoverable`: Exception for which you don't even want recovery to happen, it will result in throwing of Exception, after retry. 
+> - `notRecoverable`: Exception for which you don't even want recovery to happen, it will result in throwing of Exception, after retry.
 
-> We can use any of the combination between retry|noRetryFor and recover|notRecoverable
+> We can use any of the combination between `retry | noRetryFor` and `recover | notRecoverable`
 
-### 5.1 : **notRecoverable** 
-
-Service: 
+##### Non-Recoverable Retry
+- Description: Demonstrates a retry scenario where recovery is skipped for specific exceptions.
+- Service:
 ```java
-  // ---------------- Basic Retry But Not Recoverable: --------------------------
+// ------------ NON-RECOVERABLE RETRY ----------------------
+/**
+ * Demonstrates non-recoverable retry scenario
+ * @param id Transaction ID
+ * @param argument Business context parameter
+ * @return Throws exception after all attempts
+ */
+@Retryable(
+        retryFor = ArithmeticException.class,
+        maxAttempts = 4,
+        backoff = @Backoff(delay = 1000),
+        notRecoverable = ArithmeticException.class
+)
+public String nonRecoverableRetry(int id, String argument) {
+    log.info("[NonRecoverable] Attempt {}",
+            RetrySynchronizationManager.getContext().getRetryCount() + 1);
+    throw new ArithmeticException("Unrecoverable error!");
+}
 
+```
 
-    // Though the Exception is same, it will retry 4 times, but will not try to find recover method.
-    // Retry configuration: Retry on ArithmeticException, max 4 attempts, 1-second delay
-    @Retryable(
-            retryFor = {ArithmeticException.class}, // Retry on ArithmeticException
-            maxAttempts = 4,                 // Max retry attempts
-            backoff = @Backoff(delay = 1000), // 1-second delay between retries
-            //recover = "recoverExample"
-            notRecoverable = {ArithmeticException.class} //It will not try to recover.
-    )
-    public Object basicRetryButNotRecoverable(int id, String argument) {
-        System.out.println("Id:{} "+id+" Argument:{}"+argument);
-        log.info("[BasicRetryService:basicRetryButNotRecoverable] Retry Number:{} ",Objects.requireNonNull(RetrySynchronizationManager.getContext()).getRetryCount());
-        throw new ArithmeticException("Divide by zero!"); // Simulate failure
-
+- Controller:
+```java
+@GetMapping("/non-recoverable")
+public ResponseEntity<String> nonRecoverableRetry(
+        @RequestParam(defaultValue = "789") int id,
+        @RequestParam(defaultValue = "critical") String argument) {
+    try {
+        return ResponseEntity.ok(declarativeRetryService.basicRetryButNotRecoverable(id, argument));
+    } catch (ArithmeticException e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Non-recoverable error: " + e.getMessage());
     }
-
+}
 ```
+- Test: 
+  - http://localhost:8081/non-recoverable?id=789&argument=critical
+  - Behavior: Retries 4 times, then throws an exception without recovery.
 
-Controller: 
-
+##### No Retry but Recoverable
+- Description: Demonstrates a scenario where no retry is performed, but the recovery method is called immediately
+- Service:
 ```java
-   @GetMapping("/basic-retry-but-notRecoverable")
-    public ResponseEntity<?> basicRetryButNotRecoverable() {
-        String argument = "ABC";
-        int id = 123;
-        return ResponseEntity.ok(basicRetryService.basicRetryButNotRecoverable(id,argument));
-    }
+// ------------ NO RETRY BUT RECOVERABLE -------------------
+/**
+ * Demonstrates immediate recovery without retries
+ * @param id Transaction ID
+ * @param argument Business context parameter
+ * @return Immediate fallback response
+ */
+@Retryable(
+        noRetryFor = ArithmeticException.class,
+        recover = "immediateRecovery",
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 1000)
+)
+public String immediateRecoveryCase(int id, String argument) {
+    log.info("[ImmediateRecovery] Initial attempt");
+    throw new ArithmeticException("Immediate recovery trigger!");
+}
+
+@Recover
+public String immediateRecovery(ArithmeticException e, int id, String argument) {
+    log.warn("[ImmediateRecovery] Handling without retries");
+    return String.format("Immediate fallback for ID: %d", id);
+}
+
 ```
-Output: **GET** http://localhost:8081/basic-retry-but-notRecoverable
+
+- Controller:
 ```java
-2025-01-30T16:20:43.332+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
-2025-01-30T16:20:43.335+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
-2025-01-30T16:20:43.337+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 2 ms
-2025-01-30T16:20:43.372+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=0; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
-Id:{} 123 Argument:{}ABC
-2025-01-30T16:20:43.373+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryButNotRecoverable] Retry Number:0 
-2025-01-30T16:20:44.379+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
-2025-01-30T16:20:44.379+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
-Id:{} 123 Argument:{}ABC
-2025-01-30T16:20:44.379+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryButNotRecoverable] Retry Number:1 
-2025-01-30T16:20:45.384+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=2; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
-2025-01-30T16:20:45.385+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=2; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
-Id:{} 123 Argument:{}ABC
-2025-01-30T16:20:45.385+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryButNotRecoverable] Retry Number:2 
-2025-01-30T16:20:46.387+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=3; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
-2025-01-30T16:20:46.388+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=3; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
-Id:{} 123 Argument:{}ABC
-2025-01-30T16:20:46.388+05:30  INFO 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : [BasicRetryService:basicRetryButNotRecoverable] Retry Number:3 
-2025-01-30T16:20:46.388+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=4; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
-2025-01-30T16:20:46.388+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry failed last attempt: count=4; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable'
-2025-01-30T16:20:46.388+05:30 DEBUG 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry exhausted and recovery disabled for this throwable
-2025-01-30T16:20:46.398+05:30 ERROR 20951 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception [Request processing failed: java.lang.ArithmeticException: Divide by zero!] with root cause
-
-java.lang.ArithmeticException: Divide by zero!
-	at com.atquil.springbootfaulttolerance.service.BasicRetryService.basicRetryButNotRecoverable(BasicRetryService.java:121) ~[main/:na]
-	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+@GetMapping("/no-retry-recoverable")
+public ResponseEntity<String> noRetryButRecoverable(
+        @RequestParam(defaultValue = "101") int id,
+        @RequestParam(defaultValue = "fallback") String argument) {
+    return ResponseEntity.ok(declarativeRetryService.noRetryButRecoverable(id, argument));
+}
 ```
+- Test: 
+  - http://localhost:8081/no-retry-recoverable?id=101&argument=fallback
+  - Behavior: Skips retries and immediately calls the recovery method
 
-### 5.2 noRetryFor
 
+## 6. Imperative (RetryTemplate) Style for Retry
 
-Service: 
-
-```java
-
-    // ---------------- No Retry But Recoverable:--------------------------
-    
-    
-    @Retryable(
-            recover = "recoverFromException", // Recovery method
-            noRetryFor = {ArithmeticException.class}, // Do not retry on ArithmeticException
-            maxAttempts = 3,                          // Max retry attempts
-            backoff = @Backoff(delay = 1000)          // 1-second delay between retries
-    )
-    public String noRetryButRecoverable(int id, String argument) {
-        log.info("Performing operation for id: {} and argument: {}", id, argument);
-        throw new ArithmeticException("Divide by zero!"); // Simulate failure
-    }
-    
-    // Recovery method
-    @Recover
-    public String recoverFromException(ArithmeticException e, int id, String argument) {
-        log.info("Recovery method called for id: {} and argument: {}", id, argument);
-        System.out.println("Recovering from ArithmeticException , with No Retry");
-        return "Recovered from ArithmeticException: " + e.getMessage();
-        
-    }
-```
-Controller: 
-
-```java
-    @GetMapping("/noretry-but-recoverable")
-    public ResponseEntity<?> noRetryButRecoverable() {
-        String argument = "ABC";
-        int id = 123;
-        return ResponseEntity.ok(basicRetryService.noRetryButRecoverable(id,argument));
-    }
-```
-
-Output: **GET** http://localhost:8081/noretry-but-recoverable
-
-```java
-2025-01-30T16:43:52.932+05:30  INFO 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
-2025-01-30T16:43:52.932+05:30  INFO 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
-2025-01-30T16:43:52.933+05:30  INFO 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
-2025-01-30T16:43:52.950+05:30 DEBUG 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=0; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.noRetryButRecoverable'
-2025-01-30T16:43:52.950+05:30  INFO 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : Performing operation for id: 123 and argument: ABC
-2025-01-30T16:43:52.951+05:30 DEBUG 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.noRetryButRecoverable'
-2025-01-30T16:43:52.951+05:30 DEBUG 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] o.s.retry.support.RetryTemplate          : Retry failed last attempt: count=1; for: 'com.atquil.springbootfaulttolerance.service.BasicRetryService.noRetryButRecoverable'
-2025-01-30T16:43:52.951+05:30  INFO 21248 --- [spring-boot-fault-tolerance] [nio-8081-exec-1] c.a.s.service.BasicRetryService          : Recovery method called for id: 123 and argument: ABC
-Recovering from ArithmeticException , with No Retry
-
-```
-## 5. Imperative (RetryTemplate) vs Declarative (@Retryable)
-
-> Imperative Retry with `RetryTemplate`
+> Imperative Retry using `RetryTemplate`
 > 
 >Imperative retry is programmatic and gives you **more control** over the retry logic. **It’s useful when you need dynamic or complex retry behavior**.
-> 
+ 
 
-- 5.1 Let's create a Service `ImperativeStyleRetryServiceUsingRestTemplate`
+- **Configuration Class** : `ImperativeRetryConfigUsingRestTemplate`
+  
+This class defines the RetryTemplate bean with custom retry policies and backoff strategies
 
-
-```java
-RetryTemplate template = RetryTemplate.builder()
-        .maxAttempts(3)
-        .fixedBackoff(1000)
-        .retryOn(RuntimeException.class)
-        .build();
-        
-    template.execute(ctx -> {
-        // ... do something
-    });
-```
-
->**Declarative Style**
->
-> - For using Spring Retry in a Declarative way, we need to add `AOP dependency`
 
 ```java
 @Configuration
-@EnableRetry
-public class Application {
-
-}
-
-@Service
-class Service {
-    @Retryable(retryFor = RuntimeException.class)
-    public void service() {
-        // ... do something
-    }
-    @Recover
-    public void recover(RuntimeException e) {
-       // ... panic
-    }
-}
-```  
-
-
-### Step 5: Using Declarative Style
-
->By default, **@Retryable will attempt 3 times** (1 first attempt + 2 retries) for all exceptions are thrown and fallback to the @Recover method that has the same return type in the same class.. 
-- @Retryable: Indicates that this method is the candidate for retry. 
-    - **backoff** policy: Configure the strategy for the number of retries, delay between two retries etc.
-    - **maxAttempts** : Default retry count is 3, and the first invocation of this method is always the first retry attempt
-    - 
-
-- Create a package `service` inside this create class `ExternalService` which will call external method/endpoint 
-
-    ```java
-    // Marks this class as a Spring-managed service bean
-    @Service
-    public class ExternalService {
-        
-        private int attempt = 0;
-        private static final Logger log = LoggerFactory.getLogger(ExternalService.class);
-
-        @Retryable( // Annotation to enable retry logic on the method
-                retryFor = RuntimeException.class, //Specifies the type of exception to trigger a retry
-                maxAttempts = 3, // Maximum number of retry attempts
-                // Backoff: Retry strategy
-                backoff = @Backoff(
-                        delay = 5000, //Initial delay before the first retry (in milliseconds)
-                        maxDelay = 4, // Maximum delay between retries (corrected from 4 to a meaningful value)
-                        multiplier = 3, // Factor, by which the delay should be multiplied after each retry
-                        random = true // To add jitter between retries within range
-                )
-        )
-        public String callExternalService() {
-            attempt ++;
-            if(attempt < 3) {
-                log.info("Retry Number: {}", Objects.requireNonNull(RetrySynchronizationManager.getContext()).getRetryCount());
-                // When we get a runtime exception, it should reattempt for at-least 2 times
-                throw new RuntimeException("Failing");
-            }
-            System.out.println("Attempt " + attempt + ": Success");
-            return "Success";
-        }   
-    }
-    ```
-
-
-### Step 6: [Optional]Now Enable logs for retry in application.yml
-
-- In `applicaiton.yml` file add these config so that we can monitor the application
-
-    ```properties
-    spring:
-      application:
-        name: spring-boot-fault-tolerance
-    
-    logging:
-      level:
-        root: INFO
-        org.springframework.retry: DEBUG
-    ```
-
-
-### Step 7: Now the Endpoint and see the console: 
-
-- Api: `GET http://localhost:8080/retry`
-
-    ```java
-    2024-12-08T22:34:18.147+05:30  INFO 5782 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
-    2024-12-08T22:34:18.170+05:30 DEBUG 5782 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=0; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.callExternalService'
-    2024-12-08T22:34:18.171+05:30  INFO 5782 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] c.a.s.service.ExternalService            : Retry Number: 0
-    2024-12-08T22:34:18.171+05:30 DEBUG 5782 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.r.b.ExponentialRandomBackOffPolicy   : Sleeping for 9605
-    2024-12-08T22:34:27.787+05:30 DEBUG 5782 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=1; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.callExternalService'
-    2024-12-08T22:34:27.788+05:30 DEBUG 5782 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=1; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.callExternalService'
-    2024-12-08T22:34:27.788+05:30  INFO 5782 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] c.a.s.service.ExternalService            : Retry Number: 1
-    2024-12-08T22:34:27.788+05:30 DEBUG 5782 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.r.b.ExponentialRandomBackOffPolicy   : Sleeping for 30000
-    2024-12-08T22:34:57.795+05:30 DEBUG 5782 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=2; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.callExternalService'
-    2024-12-08T22:34:57.798+05:30 DEBUG 5782 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=2; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.callExternalService'
-    Attempt 3: Success
-    ```
-
-## Implementation of  `@Recover`
-
-
-## Configuration at Application Level: 
-
-### Step 1: Create a method for which throws `ArthmeticException`
-
-- In Service create a method `someArithmeticException`
-
-    ```java
-
-   // RetryConfigFile
-    @Retryable(
-            retryFor = ArithmeticException.class
-    )
-    public String someArithmeticException(){
-        log.info("Retry Number: %d".formatted(Objects.requireNonNull(RetrySynchronizationManager.getContext()).getRetryCount()));
-        int number = getDivideByZeroError(10) ;// ArithmeticException
-        return "Success"; // It will never reach there
-    }
-
-    private int getDivideByZeroError(int i) {
-        return i/0;
-    }
-    ```
-
-### Step 2 : Now Configure the `RetryConfig` file for `ArthemeticException`
-
-- Note: If **SimpleRetryPolicy** does not metion the Excepiton then it will be applicable to complete application
-
-```java
-
-@Configuration
-@EnableRetry
-public class RetryConfig {
+@Slf4j
+public class ImperativeRetryConfigUsingRestTemplate {
 
     @Bean
     public RetryTemplate retryTemplate() {
         RetryTemplate retryTemplate = new RetryTemplate();
 
-        // SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy(); If for global level retry.
-
-        // Retry
+        // Retry Policy: Retry up to 5 times for IllegalArgumentException
         SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy(
-                5, // 3 is the default attempt
-                Collections.singletonMap(ArithmeticException.class,true)
+                5, // Max retry attempts
+                Collections.singletonMap(IllegalArgumentException.class, true) // Retry on IllegalArgumentException
         );
 
-        // Strategy for Retry
+        // Backoff Strategy: Exponential backoff with initial delay of 1 second and max delay of 7 seconds
         ExponentialBackOffPolicy backOffPolicy = new ExponentialBackOffPolicy();
-        backOffPolicy.setInitialInterval(2000);
-        backOffPolicy.setMultiplier(2);
-        backOffPolicy.setMaxInterval(5000);
+        backOffPolicy.setInitialInterval(1000); // Initial delay: 1 second
+        backOffPolicy.setMultiplier(2); // Multiplier for exponential backoff
+        backOffPolicy.setMaxInterval(7000); // Maximum delay: 7 seconds
 
-        //For for retryTemplate set both of them
+        // Set retry policy and backoff policy
         retryTemplate.setRetryPolicy(retryPolicy);
         retryTemplate.setBackOffPolicy(backOffPolicy);
 
@@ -646,29 +423,78 @@ public class RetryConfig {
 
 ```
 
-This will give us more granular control on Config policy
+> The delay between retries will follow an exponential backoff strategy (1s, 2s, 4s, etc., up to a maximum of 7s)
 
-### Step 3: Run the application
+>**Noted: Set the backoff too short can overwhelm our server, but set it too long can increase latency, affecting user/client experience. Some clients have their own response timeout, they'll obviously give up waiting for a response and receive an error instead.**
 
-- API: `GET http://localhost:8080/retry/config`
+- **Service Class**: `ImperativeRetryService.java`
 
-    ```Java
-    
-    2024-12-08T22:41:53.167+05:30  INFO 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 5 ms
-    2024-12-08T22:41:53.190+05:30 DEBUG 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=0; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.someArithmeticException'
-    2024-12-08T22:41:53.192+05:30  INFO 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] c.a.s.service.ExternalService            : Retry Number: 0
-    2024-12-08T22:41:54.195+05:30 DEBUG 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=1; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.someArithmeticException'
-    2024-12-08T22:41:54.196+05:30 DEBUG 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=1; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.someArithmeticException'
-    2024-12-08T22:41:54.196+05:30  INFO 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] c.a.s.service.ExternalService            : Retry Number: 1
-    2024-12-08T22:41:55.199+05:30 DEBUG 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=2; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.someArithmeticException'
-    2024-12-08T22:41:55.199+05:30 DEBUG 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Retry: count=2; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.someArithmeticException'
-    2024-12-08T22:41:55.199+05:30  INFO 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] c.a.s.service.ExternalService            : Retry Number: 2
-    2024-12-08T22:41:55.200+05:30 DEBUG 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Checking for rethrow: count=3; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.someArithmeticException'
-    2024-12-08T22:41:55.200+05:30 DEBUG 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.s.retry.support.RetryTemplate          : Retry failed last attempt: count=3; for: 'com.atquil.springbootfaulttolerance.service.DeclarativeStyleRetryService.someArithmeticException'
-    2024-12-08T22:41:55.209+05:30 ERROR 5834 --- [spring-boot-fault-tolerance] [nio-8080-exec-1] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception [Request processing failed: java.lang.ArithmeticException: / by zero] with root cause
-    
-    java.lang.ArithmeticException: / by zero
-    ```
+This class uses the RetryTemplate to **perform retries and handle recovery**.
+
+```java
+@Slf4j
+@Service
+public class ImperativeRetryService {
+
+
+    @Autowired
+    private RetryTemplate retryTemplate;
+
+    public String performImperativeRetry(int id, String argument) {
+        return retryTemplate.execute(context -> {
+            // Retryable logic
+            log.info("[ImperativeRetryService:performOperation ]Performing operation for id: {} and argument: {}. Retry count: {}", id, argument, context.getRetryCount());
+            if (id == 1) {
+                throw new IllegalArgumentException("Invalid ID!"); // Simulate failure
+            }
+            return "Operation successful for id: " + id + " and argument: " + argument;
+        }, context -> {
+            // Recovery logic
+            log.info("[ImperativeRetryService:performOperation ]All retries failed. Recovery method called for id: {} and argument: {}", id, argument);
+            return "Recovered from failure for id: " + id + " and argument: " + argument;
+        });
+    }
+}
+```
+If all retries fail, the recovery logic (second lambda in retryTemplate.execute) will be called
+
+- **Controller** :  `ImperativeRetryController.java`
+```java
+@RestController
+@RequiredArgsConstructor
+public class ImperativeRetryController {
+
+
+    private final ImperativeRetryService imperativeRetryService;
+
+    @GetMapping("/imperative-retry")
+    public String performImperativeRetry(@RequestParam int id, @RequestParam String argument) {
+        return imperativeRetryService.performImperativeRetry(id, argument);
+    }
+}
+
+
+```
+- **Testing**: 
+  - Successful Operation: 
+    - Call the endpoint: http://localhost:8081/imperative-retry?id=2&argument=test
+    - The operation will succeed without retries.
+  - Retry and Recovery:
+    - Call the endpoint: http://localhost:8081/imperative-retry?id=1&argument=test
+    - The method will retry up to 5 times (with exponential backoff) and then call the recovery method.
+
+
+
+## Key Differences: Declarative vs Imperative Retry
+
+| Feature       | Declarative Retry (@Retryable)                        | Imperative Retry (RetryTemplate)                      |
+|---------------|-------------------------------------------------------|-------------------------------------------------------|
+| Configuration | Annotations (@Retryable, @Recover).                   | Programmatic configuration (RetryTemplate).           |
+| Control       | Limited to annotation parameters                      | Full control over retry policies and listeners.       |
+| Use Case	     | Simple retry scenarios with minimal boilerplate.      | Complex retry logic requiring dynamic behavior.       |
+| Recovery      | Uses a recovery callback in retryTemplate.execute().  | Uses a recovery callback in retryTemplate.execute().  |
+
+
 
 ### Now Configure using 
 # Interview Questions
@@ -688,3 +514,8 @@ This will give us more granular control on Config policy
     - This helps avoid **"thundering herds"** where multiple retries happen at exactly the same time.
     - **Reduced Load Spikes**: By spreading out the retries, jitter reduces the chance of many retries happening simultaneously, which can overwhelm your system or external dependencies.
     - **Better Distribution**: It helps distribute the retry attempts over time more evenly, improving the overall stability and responsiveness of your system.
+5. What is the default no of retry available : `3`
+
+
+### References
+- 1. [Spring Retry in Spring Retry Github Repository.](https://github.com/spring-projects/spring-retry)
