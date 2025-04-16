@@ -3,9 +3,18 @@
 
 ## Understanding Fault Tolerance in Microservices
 
-Fault tolerance is critical in microservice architectures where multiple services
-communicate over networks, introducing various failure points. 
-In a distributed system, failures are inevitable, so our applications must be designed to handle them gracefully.
+In modern distributed systems, especially microservices architectures, services communicate over networks. Networks are inherently unreliable. Services can fail,
+become slow, or return errors for countless reasons (bugs, deployment issues, resource exhaustion, infrastructure problems).
+
+
+**What happens without fault tolerance?**
+
+- A failure in one downstream service (e.g., an inventory service) can cascade upwards,causing the calling service (e.g., an order service) to hang, consume resources, and eventually fail itself. This chain reaction can bring down large parts, or even the entirety, of your application. Users experience errors, timeouts, and a generally unreliable system.
+
+**What is Fault Tolerance?**
+
+- It's the ability of a system to continue operating, potentially at a reduced capacity, rather than failing completely when one or more of its components fail. 
+- Fault tolerance is critical in microservice architectures where multiple services communicate over networks, introducing various failure points. In a distributed system, failures are inevitable, so our applications must be designed to handle them gracefully.
 
 ## How it works: 
 
